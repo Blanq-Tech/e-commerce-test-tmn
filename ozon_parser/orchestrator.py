@@ -10,6 +10,7 @@ from .browser import BrowserManager
 from .config import Settings
 from .logger import get_logger
 from .models import SearchResult, SearchTask
+from .proxy import ProxyPool
 from .search import SearchParser
 
 log = get_logger("orchestrator")
@@ -26,6 +27,9 @@ class Orchestrator:
     def __init__(self, settings: Settings) -> None:
         self.settings = settings
         self._sem = asyncio.Semaphore(settings.concurrency)
+        self.pool = ProxyPool.from_file(settings.proxies_file, settings.proxy_cooldown_sec)
+        # перемешиваем, чтобы воркеры стартовали с разных IP
+        self.pool.shuffle()
 
     async def _worker(self, parser: SearchParser, task: SearchTask) -> SearchResult:
         async with self._sem:
@@ -43,11 +47,11 @@ class Orchestrator:
         if not tasks:
             return []
         log.info(
-            "Запускаю %d задач, параллелизм=%d, глубина=%d",
-            len(tasks), self.settings.concurrency, self.settings.max_position,
+            "Запускаю %d задач, параллелизм=%d, глубина=%d, прокси в пуле=%d",
+            len(tasks), self.settings.concurrency, self.settings.max_position, len(self.pool),
         )
         async with BrowserManager(self.settings) as manager:
-            parser = SearchParser(manager, self.settings)
+            parser = SearchParser(manager, self.settings, self.pool)
             coros = [self._worker(parser, t) for t in tasks]
             results = await asyncio.gather(*coros, return_exceptions=False)
         return list(results)
@@ -60,4 +64,7 @@ class Orchestrator:
         path.write_text(json.dumps(payload, ensure_ascii=False, indent=2), encoding="utf-8")
         log.info("Результаты сохранены: %s", path)
         return path
+
+
+
 
