@@ -1,0 +1,25 @@
+# Виртуальные окружения и кеши
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Секреты и локальная конфигурация
+.env
+proxies.txt
+
+# Результаты прогонов и логи
+output/
+*.log
+
+# IDE
+.idea/
+.vscode/
+
+# Playwright
+ms-playwright/
+
+
