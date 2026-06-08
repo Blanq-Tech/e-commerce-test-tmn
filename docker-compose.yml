@@ -1,0 +1,28 @@
+services:
+  # Разовый прогон парсера: docker compose run --rm parser --query "нож туристический" --sku 123
+  parser:
+    build: .
+    image: ozon-rank-parser
+    volumes:
+      # пул прокси и результаты пробрасываем с хоста, чтобы не пересобирать образ
+      - ./proxies.txt:/app/proxies.txt:ro
+      - ./output:/app/output
+    environment:
+      HEADLESS: "true"
+      CONCURRENCY: "3"
+      MAX_POSITION: "100"
+
+  # Тест устойчивости из Части 2: 3 прогона подряд с паузой 30с.
+  stability:
+    build: .
+    image: ozon-rank-parser
+    entrypoint: ["bash", "/app/scripts/stability_test.sh"]
+    volumes:
+      - ./proxies.txt:/app/proxies.txt:ro
+      - ./output:/app/output
+      - ./scripts:/app/scripts:ro
+    environment:
+      HEADLESS: "true"
+      QUERY: "нож туристический"
+      SKU: "1635725435"
+
