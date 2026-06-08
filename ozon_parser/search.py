@@ -12,6 +12,7 @@ from .config import Settings
 from .extract import extract_skus, find_position, page_of
 from .logger import get_logger
 from .models import SearchResult, SearchTask
+from .proxy import Proxy, ProxyPool
 
 log = get_logger("search")
 
@@ -39,9 +40,11 @@ class BlockedError(RuntimeError):
 class SearchParser:
     """Открывает поиск, листает страницы и считает позицию артикула."""
 
-    def __init__(self, manager: BrowserManager, settings: Settings) -> None:
+    def __init__(self, manager: BrowserManager, settings: Settings,
+                 pool: ProxyPool | None = None) -> None:
         self.manager = manager
         self.settings = settings
+        self.pool = pool
 
     async def _human_pause(self) -> None:
         delay = random.randint(self.settings.min_delay_ms, self.settings.max_delay_ms) / 1000
@@ -86,10 +89,12 @@ class SearchParser:
                 raise BlockedError("Антибот: плитки не появились")
         return page
 
-    async def _scan_once(self, task: SearchTask) -> SearchResult:
+    async def _scan_once(self, task: SearchTask, proxy: Proxy | None = None) -> SearchResult:
         """Одна полная попытка: свежий контекст, проход по страницам выдачи."""
-        context = await self.manager.new_context()
+        proxy_cfg = proxy.to_playwright() if proxy else None
+        context = await self.manager.new_context(proxy=proxy_cfg)
         collected: list[str] = []
+        seen: set[str] = set()
         pages_needed = (self.settings.max_position // 36) + 1
         try:
             for page_num in range(1, pages_needed + 1):
@@ -97,11 +102,15 @@ class SearchParser:
                 hrefs = await self._collect_page_hrefs(page)
                 await page.close()
 
-                before = len(collected)
-                collected = extract_skus(collected_to_hrefs(collected) + hrefs)
+                added = 0
+                for sku in extract_skus(hrefs):
+                    if sku not in seen:
+                        seen.add(sku)
+                        collected.append(sku)
+                        added += 1
                 log.info(
                     "[%s] стр.%d: +%d товаров (всего %d)",
-                    task.sku, page_num, len(collected) - before, len(collected),
+                    task.sku, page_num, added, len(collected),
                 )
 
                 pos = find_position(collected, task.sku)
@@ -111,7 +120,8 @@ class SearchParser:
                     )
                 if len(collected) >= self.settings.max_position:
                     break
-                if not hrefs:
+                if added == 0:
+                    # выдача закончилась — дальше листать смысла нет
                     break
                 await self._human_pause()
 
@@ -122,21 +132,26 @@ class SearchParser:
             await context.close()
 
     async def run(self, task: SearchTask) -> SearchResult:
-        """Запускает задачу с ретраями на блокировки/сбои."""
+        """Запускает задачу с ретраями на блокировки/сбои и ротацией прокси."""
         last_error: str | None = None
         for attempt in range(1, self.settings.max_retries + 1):
+            proxy = self.pool.acquire() if self.pool and self.pool.enabled else None
+            via = f" через {proxy.label}" if proxy else ""
             try:
-                result = await self._scan_once(task)
-                return result
+                return await self._scan_once(task, proxy)
             except BlockedError as exc:
                 last_error = str(exc)
-                log.warning("[%s] попытка %d: блокировка (%s)", task.sku, attempt, exc)
+                log.warning("[%s] попытка %d%s: блокировка (%s)", task.sku, attempt, via, exc)
+                if self.pool:
+                    self.pool.mark_bad(proxy)  # этот IP спалился — на cooldown
             except PWTimeout as exc:
                 last_error = f"timeout: {exc}"
-                log.warning("[%s] попытка %d: таймаут", task.sku, attempt)
+                log.warning("[%s] попытка %d%s: таймаут", task.sku, attempt, via)
+                if self.pool:
+                    self.pool.mark_bad(proxy)
             except Exception as exc:  # noqa: BLE001 — наверх не роняем, фиксируем как error
                 last_error = repr(exc)
-                log.exception("[%s] попытка %d: неожиданная ошибка", task.sku, attempt)
+                log.exception("[%s] попытка %d%s: неожиданная ошибка", task.sku, attempt, via)
             # экспоненциальный бэкофф с джиттером
             await asyncio.sleep(min(2 ** attempt, 30) + random.random())
 
@@ -144,7 +159,8 @@ class SearchParser:
                                  status="error", error=last_error)
 
 
-def collected_to_hrefs(skus: list[str]) -> list[str]:
-    """Обратное преобразование SKU -> псевдо-ссылка, чтобы не терять порядок при слиянии."""
-    return [f"/product/-{sku}" for sku in skus]
+
+
+
+
 
