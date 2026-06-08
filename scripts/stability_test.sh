@@ -7,6 +7,13 @@ QUERY="${QUERY:-нож туристический}"
 SKU="${SKU:-1635725435}"
 RUNS="${RUNS:-3}"
 INTERVAL="${INTERVAL:-30}"
+# Если задан FIXTURE — гоняем офлайн-режим (детерминированно, без живого Ozon).
+FIXTURE="${FIXTURE:-}"
+EXTRA=""
+if [ -n "${FIXTURE}" ]; then
+  EXTRA="--fixture ${FIXTURE}"
+  echo "(офлайн-режим, фикстура: ${FIXTURE})"
+fi
 
 echo "=== Тест устойчивости: '${QUERY}' / sku=${SKU}, прогонов=${RUNS}, пауза=${INTERVAL}с ==="
 
@@ -14,7 +21,7 @@ ok=0
 for i in $(seq 1 "${RUNS}"); do
   echo ""
   echo "----- Прогон ${i}/${RUNS} ($(date '+%H:%M:%S')) -----"
-  if python main.py --query "${QUERY}" --sku "${SKU}"; then
+  if python main.py --query "${QUERY}" --sku "${SKU}" ${EXTRA}; then
     ok=$((ok + 1))
     echo ">>> Прогон ${i}: УСПЕХ"
   else

@@ -75,6 +75,15 @@ class SearchParser:
 
     async def _open_search_page(self, context: BrowserContext, query: str, page_num: int) -> Page:
         page = await context.new_page()
+        # Офлайн-режим: открываем сохранённую страницу выдачи вместо живого Ozon.
+        if self.settings.fixture:
+            from pathlib import Path
+
+            url = Path(self.settings.fixture).resolve().as_uri()
+            await page.goto(url, wait_until="domcontentloaded")
+            await page.wait_for_selector(TILE_SELECTORS[0], timeout=self.settings.nav_timeout_ms)
+            return page
+
         url = SEARCH_URL.format(query=quote(query), page=page_num)
         await page.goto(url, wait_until="domcontentloaded")
         if await self._looks_blocked(page):

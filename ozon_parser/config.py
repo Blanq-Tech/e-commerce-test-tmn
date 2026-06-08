@@ -60,6 +60,10 @@ class Settings:
 
     output_dir: Path = field(default_factory=lambda: Path(os.getenv("OUTPUT_DIR", "output")))
 
+    # Офлайн-режим: путь к сохранённой странице выдачи (file://...) для
+    # детерминированной проверки логики без обращения к живому Ozon.
+    fixture: str | None = field(default_factory=lambda: os.getenv("OZON_FIXTURE") or None)
+
     def proxy_config(self) -> dict | None:
         """Playwright ждёт прокси словарём; поддерживаем логин/пароль в URL."""
         if not self.proxy_server:

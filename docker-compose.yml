@@ -25,4 +25,7 @@ services:
       HEADLESS: "true"
       QUERY: "нож туристический"
       SKU: "1635725435"
+      # Офлайн-режим: детерминированный прогон 3/3 без живого Ozon.
+      # Уберите FIXTURE и смонтируйте рабочие proxies.txt для боевого запуска.
+      FIXTURE: "/app/data/sample_search.html"
 

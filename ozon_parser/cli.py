@@ -33,6 +33,7 @@ def build_parser() -> argparse.ArgumentParser:
     p.add_argument("--concurrency", type=int, help="число параллельных воркеров")
     p.add_argument("--max-position", type=int, help="глубина проверки (по умолчанию 100)")
     p.add_argument("--headful", action="store_true", help="показать окно браузера")
+    p.add_argument("--fixture", help="офлайн-режим: HTML-файл сохранённой выдачи")
     p.add_argument("--no-save", action="store_true", help="не сохранять файл с результатами")
     return p
 
@@ -45,6 +46,8 @@ async def _run(args: argparse.Namespace) -> list[SearchResult]:
         settings.max_position = args.max_position
     if args.headful:
         settings.headless = False
+    if args.fixture:
+        settings.fixture = args.fixture
 
     tasks = _load_tasks(args)
     orchestrator = Orchestrator(settings)
